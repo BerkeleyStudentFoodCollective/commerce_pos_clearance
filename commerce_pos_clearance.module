@@ -1,0 +1,137 @@
+<?php
+
+/**
+ * @file
+ * Adds a clearance discount to Commerce POS
+ */
+
+/**
+ * Implements hook_commerce_pos_action_info().
+ */
+function commerce_pos_clearance_commerce_pos_action_info() {
+  return array(
+     	'commerce_pos_clearance' => array(
+      'action text' => 'CE',
+      'callbacks' => array(
+        'parse' => array('commerce_pos_line_item_discount_parse'),
+        'validate' => array(
+        	'commerce_pos_order_require_modifiable_order',
+          'commerce_pos_line_item_discount_check_line_items',
+        ),
+        'execute' => array('commerce_pos_clearance_execute'),
+        'access' => array('commerce_pos_order_access'),
+      ),
+      'weight' => 100,
+      'button' => array(
+        'title' => t('Clearance'),
+        'section' => 'discounts',
+        'weight' => 0,
+      ),
+    ),
+  );
+}
+
+/**
+ * Implements hook_commerce_price_component_info().
+ */
+function commerce_pos_clearance_commerce_price_component_type_info() {
+  $components = array();
+  $components['commerce_pos_clearance_discount'] = array(
+  	'title' => t('Clearance'),
+  	'weight' => -9,
+  );
+
+  return $components;
+}
+
+/**
+ * Execute callback for the percent discount action.
+ */
+function commerce_pos_clearance_execute(&$variables) {
+  $selected = $variables['commerce_line_items_selected'];
+  $rate = commerce_pos_clearance_discount_rate();
+
+  $line_items = commerce_line_item_load_multiple($selected);
+  $data = array('rate' => $rate);
+  foreach ($line_items as $line_item) {
+    commerce_pos_line_item_discount_add_discount($line_item, 'clearance', $data);
+    commerce_line_item_save($line_item);
+  }
+  if (count($line_items)) {
+    commerce_order_save($variables['order']);
+  }
+}
+
+/**
+ * Implements hook_commerce_pos_line_item_discount_type_info().
+ */
+function commerce_pos_clearance_commerce_pos_line_item_discount_type_info() {
+  return array(
+    'clearance' => array(
+      'label' => t('Clearance'),
+      'callbacks' => array(
+        'apply' => 'commerce_pos_clearance_apply_discount',
+        'display' => 'commerce_pos_clearance_display_discount',
+      ),
+    ),
+  );
+}
+
+/**
+ * Apply a fixed percentage clearance discount.
+ */
+function commerce_pos_clearance_apply_discount($line_item, $data) {
+  $rate = $data['rate'];
+  $component_name = 'commerce_pos_clearance_discount';
+  $wrapper = entity_metadata_wrapper('commerce_line_item', $line_item);
+  $unit_price = commerce_price_wrapper_value($wrapper, 'commerce_unit_price', TRUE);
+  $amount = $rate * $unit_price['amount'];
+
+  //adapted from commerce_line_item.rules.inc
+  if (is_numeric($amount)) {
+
+    // Calculate the updated amount and create a price array representing the
+    // difference between it and the current amount.
+    $current_amount = $unit_price['amount'];
+    $updated_amount = $current_amount - $amount;
+
+    $difference = array(
+      'amount' => $updated_amount - $current_amount,
+      'currency_code' => $unit_price['currency_code'],
+      'data' => array(),
+    );
+
+    // Set the amount of the unit price and add the difference as a component.
+    $wrapper->commerce_unit_price->amount = $updated_amount;
+
+    $wrapper->commerce_unit_price->data = commerce_price_component_add(
+      $wrapper->commerce_unit_price->value(),
+      $component_name,
+      $difference,
+      TRUE
+    );
+  }
+}
+
+/**
+ * Implements hook_commerce_pos_settings_form_alter()
+ */
+function commerce_pos_clearance_form_commerce_pos_settings_form_alter(&$form, &$form_state) {
+  $form['clearance'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Clearance'),
+    'commerce_pos_clearance_discount_rate' => array(
+      '#type' => 'textfield',
+      '#title' => t('Clearance discount rate'),
+      '#description' => t('The discount, as a decimal, to be applied to clearance items. For example, enter 0.15 for a 15% discount.'),
+      '#default_value' => commerce_pos_clearance_discount_rate(),
+    ),
+  );
+}
+
+/**
+ * Returns the discount rate to be applied to clearance products.
+ */
+function commerce_pos_clearance_discount_rate() {
+  return variable_get('commerce_pos_clearance_discount_rate', 0);
+}

@@ -1,0 +1,6 @@
+name = Commerce POS Clearance
+description = Defines a clearance discount type.
+package = Commerce POS
+dependencies[] = commerce_pos_line_item_discount
+dependencies[] = commerce_pos
+core = 7.x
