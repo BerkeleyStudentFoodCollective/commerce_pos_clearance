@@ -55,6 +55,7 @@ function commerce_pos_clearance_execute(&$variables) {
   $data = array('rate' => $rate);
   foreach ($line_items as $line_item) {
     commerce_pos_line_item_discount_add_discount($line_item, 'clearance', $data);
+    rules_invoke_event('commerce_pos_line_item_discount_add', $line_item, commerce_order_load($line_item->order_id));
     commerce_line_item_save($line_item);
   }
   if (count($line_items)) {
